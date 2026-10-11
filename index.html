@@ -143,6 +143,13 @@ body.rainbow-on #rainbow{opacity:1}
 .dialog p{margin:0 0 20px;font-size:18px;line-height:1.4}.dialog h2{margin:0 0 18px;font-size:24px}
 .row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
 .step{display:none}.step.show{display:block}
+.card-previews{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0;max-height:48vh;overflow:auto}
+.preview-card{min-width:0;padding:8px;border:1px solid var(--bd);border-radius:12px;background:rgba(0,0,0,.2)}
+.preview-card h3{font-size:13px;margin:0 0 7px;text-align:center;color:var(--ac2)}
+.preview-grid{display:grid;gap:3px;aspect-ratio:1}
+.preview-num{display:grid;place-items:center;min-width:0;overflow:hidden;border-radius:4px;background:linear-gradient(160deg,var(--t1),var(--t2));font-size:clamp(8px,2.8vw,15px);font-weight:900}
+#startGameBtn{margin-top:8px}
+@media(max-height:700px){.card-previews{max-height:38vh}.dialog{max-height:94dvh;overflow:auto}}
 .inp{width:100%;height:56px;margin-bottom:14px;padding:0 14px;border-radius:14px;border:2px solid var(--ac);background:rgba(0,0,0,.35);color:#fff;text-align:center;font:800 22px "Trebuchet MS","Segoe UI",system-ui,sans-serif}
 .inp:focus{outline:none;box-shadow:0 0 16px color-mix(in srgb,var(--ac) 60%,transparent)}
 .sub{margin:0 0 10px;font-size:14px;color:var(--dim)}
@@ -225,12 +232,11 @@ body.rainbow-on #rainbow{opacity:1}
       <button class="btn cancel go" id="backBtn" type="button">Back</button>
     </div>
     <div class="step" id="step3">
-      <h2>Who plays first?</h2>
-      <p class="sub" id="firstSub"></p>
-      <div class="row">
-        <button class="btn pick pa fp" type="button" data-n="Antor">Antor</button>
-        <button class="btn pick pz fp" type="button" data-n="Zafna">Zafna</button>
-      </div>
+      <h2>Preview Both Cards</h2>
+      <p class="sub" id="firstSub">Check both players' cards. Tap Change Cards to shuffle them again.</p>
+      <div id="cardPreviews" class="card-previews"></div>
+      <button class="btn cancel go" id="shuffleCardsBtn" type="button">🔀 Change Cards</button>
+      <button class="btn ok go" id="startGameBtn" type="button">▶ Start Game</button>
       <button class="btn cancel go" id="back3" type="button">Back</button>
     </div>
   </div>
@@ -347,7 +353,7 @@ var n=Number(mode), boards;
 if(preparedBoards&&preparedBoards.mode===n){boards={Antor:preparedBoards.Antor.slice(),Zafna:preparedBoards.Zafna.slice()};}
 else boards={Antor:randomBoard(n),Zafna:randomBoard(n)};
 preparedBoards=null;
-return {mode:n,boards:boards,markedValues:[],histValues:[],turnHistory:[],first:firstPlayer,turn:firstPlayer,winner:"",elapsedMs:0,started:false,updatedAt:Date.now(),revision:2};
+return {mode:n,boards:boards,markedValues:[],histValues:[],turnHistory:[],first:"",turn:"",winner:"",elapsedMs:0,started:false,updatedAt:Date.now(),revision:3};
 }
 function localMarksFromValues(values){var set=new Set(values||[]);return numbers.map(function(v){return set.has(v);});}
 function lineResult(board, markedValues, mode){
@@ -383,7 +389,7 @@ if(s.boards&&player&&Array.isArray(s.boards[player])){
 }
 applySharedState(s);
 roomConnected=true;
-roomInfo("ROOM "+roomCode+" • "+player+" • "+(s.turn||s.first)+"'s turn");
+roomInfo("ROOM "+roomCode+" • "+player+" • "+(s.started?(s.turn+"'s turn"):"Waiting for first move"));
 $("menuBtn").disabled=!isRoomHost;
 });
 }
@@ -408,7 +414,7 @@ if(won&&!oldWon)later(celebrate,250);if(!won&&oldWon)endWin();
 swMs=Number(s.elapsedMs)||0;
 if(s.started&&!s.winner){if(swT0===null){swT0=Date.now();swId=setInterval(swTick,250);}else swT0=Date.now();$("sw").textContent=fmt(swMs);}else{swStop();$("sw").textContent=fmt(swMs);}
 updateStatus();$("msg").textContent=s.winner?(s.winner+" wins!"):order.length===0?"Game in progress":order.length+(order.length===1?" line":" lines")+" completed!";
-roomInfo("ROOM "+roomCode+" • "+player+" • "+(s.turn||s.first)+"'s turn");
+roomInfo("ROOM "+roomCode+" • "+player+" • "+(s.started?(s.turn+"'s turn"):"Waiting for first move"));
 applyingSnapshot=false;
 }
 async function ensurePlayerBoard(){
@@ -440,7 +446,7 @@ var result=await runTransaction(sharedGameRef,function(s){
 if(!s||!Array.isArray(s.markedValues)||!s.boards||!Array.isArray(s.boards[player])||s.winner&&!isUndo)return;
 s=JSON.parse(JSON.stringify(s));var at=s.histValues.lastIndexOf(number);
 if(isUndo){if(s.markedValues.indexOf(number)<0)return;s.markedValues=s.markedValues.filter(function(v){return v!==number;});if(at>=0){var removedPlayer=s.turnHistory[at];s.histValues.splice(at,1);s.turnHistory.splice(at,1);if(at===s.histValues.length)s.turn=removedPlayer||s.turn;}if(s.histValues.length===0){s.started=false;s.elapsedMs=0;}s.winner="";
-}else{if(s.turn!==player||s.markedValues.indexOf(number)>=0)return;s.markedValues.push(number);s.histValues.push(number);s.turnHistory.push(player);s.turn=otherPlayer(player);if(!s.started){s.started=true;s.elapsedMs=0;}else if(swT0!==null)s.elapsedMs=swMs+Date.now()-swT0;}
+}else{if((s.started&&s.turn!==player)||s.markedValues.indexOf(number)>=0)return;s.markedValues.push(number);s.histValues.push(number);s.turnHistory.push(player);s.turn=otherPlayer(player);if(!s.started){s.started=true;s.elapsedMs=0;}else if(swT0!==null)s.elapsedMs=swMs+Date.now()-swT0;}
 var boardA=s.boards.Antor||[],boardZ=s.boards.Zafna||[],ca=lineResult(boardA,s.markedValues,s.mode),cz=lineResult(boardZ,s.markedValues,s.mode);
 if(ca.won)s.winner="Antor";else if(cz.won)s.winner="Zafna";
 if(s.winner){s.elapsedMs=swMs+(swT0!==null?Date.now()-swT0:0);}
@@ -491,7 +497,7 @@ function onTap(i){
 if(!marked[i]){
 if(won)return;
 if(sharedGameRef&&roomConnected){
-if(currentSharedGame&&currentSharedGame.turn!==player){toast("It's "+currentSharedGame.turn+"'s turn.");return;}
+if(currentSharedGame&&currentSharedGame.started&&currentSharedGame.turn!==player){toast("It's "+currentSharedGame.turn+"'s turn.");return;}
 commitMove(i,false);return;
 }
 onTapLocal(i);return;
@@ -628,36 +634,44 @@ fp.forEach(function(p){p.x+=p.vx;p.y+=p.vy;p.life-=.035;var L=Math.max(p.life,0)
 fctx.fillStyle="rgba(255,"+(50+L*170|0)+","+(L>.7?60:0)+","+L*.5+")";fctx.beginPath();fctx.arc(p.x,p.y,p.r*(.4+L*.6),0,6.3);fctx.fill();});
 requestAnimationFrame(fireLoop);}
 
-/* setup: who is playing -> which game -> who plays first */
+/* setup: choose players -> game mode -> preview/shuffle cards -> start */
 var setup=$("setup"),steps=[$("step1"),$("step2"),$("step3")];
 function showStep(n){steps.forEach(function(e,i){e.classList.toggle("show",i===n-1);});}
-document.querySelectorAll(".qn").forEach(function(b){b.addEventListener("click",function(){
+function renderCardPreviews(){
+  var host=$("cardPreviews");host.innerHTML="";
+  if(!preparedBoards||preparedBoards.mode!==pendingMode)preparedBoards={mode:pendingMode,Antor:randomBoard(pendingMode),Zafna:randomBoard(pendingMode)};
+  ["Antor","Zafna"].forEach(function(name){
+    var card=document.createElement("div");card.className="preview-card";
+    var title=document.createElement("h3");title.textContent=name+"'s Card";card.appendChild(title);
+    var grid=document.createElement("div");grid.className="preview-grid";grid.style.gridTemplateColumns="repeat("+pendingMode+",minmax(0,1fr))";
+    preparedBoards[name].forEach(function(num){var cell=document.createElement("div");cell.className="preview-num";cell.textContent=num;grid.appendChild(cell);});
+    card.appendChild(grid);host.appendChild(card);
+  });
+}
+document.querySelectorAll(".qn").forEach(function(b){b.addEventListener("click",async function(){
 player=b.getAttribute("data-n");applyTheme();$("whoEl").innerHTML="<i>"+initial+"</i>"+player;
 if(!isRoomHost){
 setup.classList.remove("show");$("menuBtn").disabled=true;
-roomInfo("ROOM "+roomCode+"  •  "+player+"  •  Waiting for game settings");
-if(currentSharedGame){applySharedState(currentSharedGame);ensurePlayerBoard();}
+roomInfo("ROOM "+roomCode+" • "+player+" • Waiting for host to start");
+if(currentSharedGame&&currentSharedGame.started){applySharedState(currentSharedGame);ensurePlayerBoard();}
 return;
 }
-$("hi").textContent=player+", choose your game";showStep(2);});});
+$("hi").textContent=player+", choose your game";showStep(2);
+});});
 $("backBtn").addEventListener("click",function(){showStep(1);});
 $("back3").addEventListener("click",function(){showStep(2);});
 document.querySelectorAll(".mode").forEach(function(b){b.addEventListener("click",function(){
-pendingMode=parseInt(b.getAttribute("data-n"),10);
-$("firstSub").textContent=pendingMode+"\u00d7"+pendingMode+" \u2022 "+MODES[pendingMode];showStep(3);});});
-var shuffleCardsBtn=document.createElement("button");
-shuffleCardsBtn.className="btn cancel go";shuffleCardsBtn.id="shuffleCardsBtn";shuffleCardsBtn.type="button";shuffleCardsBtn.textContent="🔀 Shuffle Cards";
-$("step3").insertBefore(shuffleCardsBtn,$("back3"));
-shuffleCardsBtn.addEventListener("click",function(){
-preparedBoards={mode:pendingMode,Antor:randomBoard(pendingMode),Zafna:randomBoard(pendingMode)};
-toast("Both players' cards shuffled. Start the game to use them!");
+pendingMode=parseInt(b.getAttribute("data-n"),10);preparedBoards={mode:pendingMode,Antor:randomBoard(pendingMode),Zafna:randomBoard(pendingMode)};
+$("firstSub").textContent=pendingMode+"×"+pendingMode+" • Change Cards can shuffle both boards as many times as you want.";renderCardPreviews();showStep(3);});});
+$("shuffleCardsBtn").addEventListener("click",function(){
+preparedBoards={mode:pendingMode,Antor:randomBoard(pendingMode),Zafna:randomBoard(pendingMode)};renderCardPreviews();toast("Both cards shuffled. Press Start Game when ready!");
 });
-document.querySelectorAll(".fp").forEach(function(b){b.addEventListener("click",function(){
-first=b.getAttribute("data-n");setMode(pendingMode);
-setup.classList.remove("show");audio();
+$("startGameBtn").addEventListener("click",function(){
+if(!isRoomHost){toast("Waiting for the room creator to start the game.");return;}
+first="";setMode(pendingMode);setup.classList.remove("show");audio();
 $("whoEl").innerHTML="<i>"+initial+"</i>"+player+" • "+N+"×"+N;
-if(sharedGameRef&&roomConnected&&!isRoomHost){toast("Waiting for the host to start the game.");return;}
-newGame();requestAnimationFrame(fireResize);});});
+newGame();requestAnimationFrame(fireResize);
+});
 $("menuBtn").addEventListener("click",function(){
 if(!isRoomHost){toast("Ask the room creator to change game settings.");return;}
 showStep(1);setup.classList.add("show");
